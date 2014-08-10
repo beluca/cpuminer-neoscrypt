@@ -1,3 +1,0 @@
-minerd-neoscrypt_asm.o: neoscrypt_asm.S /usr/include/stdc-predef.h
-
-/usr/include/stdc-predef.h:
