@@ -1,5 +1,5 @@
 This is a multi-threaded CPU miner for NeoScrypt, Scrypt and SHA-256d,
-fork of Jeff Garzik's reference cpuminer.
+fork of ghostlander's neoscrypt cpuminer.
 
 License: GPLv2.  See COPYING for details.
 
