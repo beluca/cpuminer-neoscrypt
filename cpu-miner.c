@@ -1068,10 +1068,10 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		free(xnonce2str);
 	}
 
-        if(opt_algo == ALGO_SHA256D)
-          diff_to_target(work->target, sctx->job.diff);
-        else
-          diff_to_target(work->target, sctx->job.diff / 65536.0);
+    if(opt_algo == ALGO_SHA256D)
+      diff_to_target(work->target, sctx->job.diff);
+    else
+      diff_to_target(work->target, sctx->job.diff / 65536.0);
 }
 
 bool fulltest_le(const uint *hash, const uint *target) {
@@ -1106,15 +1106,31 @@ bool fulltest_le(const uint *hash, const uint *target) {
 }
 
 int scanhash_neoscrypt(int thr_id, uint *pdata, const uint *ptarget, uint max_nonce,
-  ulong *hashes_done, uint profile) {
+    ulong *hashes_done, uint profile) {
     uint hash[8];
     const uint targint = ptarget[7];
     uint start_nonce = pdata[19], inc_nonce = 1;
+    uchar * pdata_c=(uchar *)pdata;
+    uchar work[80];
+    int i=0;
 
-     while((pdata[19] < max_nonce) && !work_restart[thr_id].restart) {
+    /* Header conversion without nonce */
+    for(i=0;i<19;i++){
+        work[i*4] = pdata_c[i*4+3];
+        work[i*4+1] = pdata_c[i*4+2];
+        work[i*4+2] = pdata_c[i*4+1];
+        work[i*4+3] = pdata_c[i*4];
+    }
 
-        neoscrypt((uint8_t *) pdata, (uint8_t *) hash, profile);
 
+    while((pdata[19] < max_nonce) && !work_restart[thr_id].restart) {
+        /* convert nonce */
+        work[76] = pdata_c[79];
+        work[77] = pdata_c[78];
+        work[78] = pdata_c[77];
+        work[79] = pdata_c[76];
+
+        neoscrypt((uint8_t *) work, (uint8_t *) hash, profile);
         /* Quick hash check */
         if(hash[7] <= targint) {
             /* Complete hash check */
@@ -1171,11 +1187,12 @@ static void *miner_thread(void *userdata)
 	struct thr_info *mythr = userdata;
 	int thr_id = mythr->id;
 	struct work work = {{0}};
-	uint32_t max_nonce;
+    uint32_t max_nonce;
 	uint32_t end_nonce = 0xffffffffU / opt_n_threads * (thr_id + 1) - 0x20;
 	unsigned char *scratchbuf = NULL;
 	char s[16];
 	int i;
+
 
 	/* Set worker threads to nice 19 and then preferentially to SCHED_IDLE
 	 * and if that fails, then SCHED_BATCH. No need for this to be an
@@ -1234,7 +1251,8 @@ static void *miner_thread(void *userdata)
 		if (memcmp(work.data, g_work.data, 76)) {
 			work_free(&work);
 			work_copy(&work, &g_work);
-			work.data[19] = 0xffffffffU / opt_n_threads * thr_id;
+            work.data[19] = 0xffffffffU / opt_n_threads * thr_id;
+
 		} else
 			work.data[19]++;
 		pthread_mutex_unlock(&g_work_lock);
