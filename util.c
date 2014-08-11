@@ -442,13 +442,6 @@ json_t *json_rpc_call(CURL *curl, const char *url,
 		hi.stratum_url = NULL;
 	}
 
-	/* If X-Long-Polling was found, activate long polling */
-	if (!have_longpoll && want_longpoll && hi.lp_path && !have_gbt &&
-	    allow_getwork && !have_stratum) {
-		have_longpoll = true;
-		tq_push(thr_info[longpoll_thr_id].q, hi.lp_path);
-		hi.lp_path = NULL;
-	}
 
 	if (!all_data.buf) {
 		applog(LOG_ERR, "Empty data received in json_rpc_call.");
@@ -773,31 +766,31 @@ void diff_to_target(uint32_t *target, double diff)
 
 static bool send_line(curl_socket_t sock, char *s)
 {
-	ssize_t len, sent = 0;
-	
-	len = strlen(s);
-	s[len++] = '\n';
+    ssize_t len, sent = 0;
 
-	while (len > 0) {
-		struct timeval timeout = {0, 0};
-		ssize_t n;
-		fd_set wd;
+    len = strlen(s);
+    s[len++] = '\n';
 
-		FD_ZERO(&wd);
-		FD_SET(sock, &wd);
-		if (select(sock + 1, NULL, &wd, NULL, &timeout) < 1)
-			return false;
-		n = send(sock, s + sent, len, 0);
-		if (n < 0) {
-			if (!socket_blocks())
-				return false;
-			n = 0;
-		}
-		sent += n;
-		len -= n;
-	}
+    while (len > 0) {
+        struct timeval timeout = {0, 0};
+        ssize_t n;
+        fd_set wd;
 
-	return true;
+        FD_ZERO(&wd);
+        FD_SET(sock, &wd);
+        if (select(sock + 1, NULL, &wd, NULL, &timeout) < 1)
+            return false;
+        n = send(sock, s + sent, len, 0);
+        if (n < 0) {
+            if (!socket_blocks())
+                return false;
+            n = 0;
+        }
+        sent += n;
+        len -= n;
+    }
+
+    return true;
 }
 
 bool stratum_send_line(struct stratum_ctx *sctx, char *s)
