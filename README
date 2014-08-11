@@ -1,15 +1,15 @@
-This is a multi-threaded CPU miner for NeoScrypt, Scrypt and SHA-256d,
-fork of ghostlander's neoscrypt cpuminer.
+This is a multi-threaded CPU miner for NeoScrypt fork of ghostlander's neoscrypt cpuminer.
 
 License: GPLv2.  See COPYING for details.
 
-Downloads:  https://sourceforge.net/projects/cpuminer/files/
-Git tree:   https://github.com/pooler/cpuminer
+Downloads:  https://
+Git tree:   https://github.com/beluca/cpuminer-neoscrypt
 
 Dependencies:
 	libcurl			http://curl.haxx.se/libcurl/
 	jansson			http://www.digip.org/jansson/
 		(jansson is included in-tree)
+        sudo apt-get install git make automake libcurl4-gnutls-dev
 
 Basic *nix build instructions:
 	./autogen.sh	# only needed if building from git repo
