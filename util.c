@@ -1091,7 +1091,7 @@ start:
 	sctx->xnonce1 = malloc(sctx->xnonce1_size);
 	hex2bin(sctx->xnonce1, xnonce1, sctx->xnonce1_size);
 	sctx->xnonce2_size = xn2_size;
-	sctx->next_diff = 1.0;
+    //sctx->next_diff = 1.0; //hum if stratum min diff > 1.0 it will produce only invalid share
 	pthread_mutex_unlock(&sctx->work_lock);
 
 	if (opt_debug && sid)
@@ -1234,7 +1234,7 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	hex2bin(sctx->job.ntime, ntime, 4);
 	sctx->job.clean = clean;
 
-	sctx->job.diff = sctx->next_diff;
+    sctx->job.diff = sctx->next_diff;
 
 	pthread_mutex_unlock(&sctx->work_lock);
 
@@ -1253,7 +1253,9 @@ static bool stratum_set_difficulty(struct stratum_ctx *sctx, json_t *params)
 		return false;
 
 	pthread_mutex_lock(&sctx->work_lock);
-	sctx->next_diff = diff;
+    sctx->next_diff = diff;
+    if(sctx->job.diff == 0)
+        sctx->job.diff = diff;
 	pthread_mutex_unlock(&sctx->work_lock);
 
 	if (opt_debug)

@@ -168,6 +168,7 @@ Usage: " PROGRAM_NAME " [OPTIONS]\n\
 Options:\n\
   -a, --algo=ALGO       specify the algorithm to use\n\
       neoscrypt  NeoScrypt(128, 2, 1) with Salsa20/20 and ChaCha20/20 (default)\n\
+      altscrypt  Scrypt(1024, 1, 1) with Salsa20/8 through NeoScrypt\n\
   -o, --url=URL         URL of mining server\n\
   -O, --userpass=U:P    username:password pair for mining server\n\
   -u, --user=USERNAME   username for mining server\n\
@@ -183,6 +184,9 @@ Options:\n\
                           long polling is unavailable, in seconds (default: 5)\n\
       --coinbase-addr=ADDR  payout address for solo mining\n\
       --coinbase-sig=TEXT  data to insert in the coinbase when possible\n\
+      --no-longpoll     disable long polling support\n\
+      --no-getwork      disable getwork support\n\
+      --no-gbt          disable getblocktemplate support\n\
       --no-stratum      disable X-Stratum support\n\
       --no-redirect     ignore requests to change the URL of the mining server\n\
   -q, --quiet           disable per-thread hashmeter output\n\
@@ -224,6 +228,9 @@ static struct option const options[] = {
 	{ "config", 1, NULL, 'c' },
 	{ "debug", 0, NULL, 'D' },
 	{ "help", 0, NULL, 'h' },
+    { "no-gbt", 0, NULL, 1011 },
+    { "no-getwork", 0, NULL, 1010 },
+    { "no-longpoll", 0, NULL, 1003 },
 	{ "no-redirect", 0, NULL, 1009 },
 	{ "no-stratum", 0, NULL, 1007 },
 	{ "pass", 1, NULL, 'p' },
@@ -608,7 +615,11 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 {
 	unsigned char merkle_root[64];
 	int i;
-
+    if(sctx->job.diff == 0){
+        applog(LOG_DEBUG, "Waiting for stratum to set diff");
+        sleep(1);
+        stratum_gen_work(sctx,work);
+    }
 	pthread_mutex_lock(&sctx->work_lock);
 
 	free(work->job_id);
@@ -638,7 +649,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	work->data[18] = le32dec(sctx->job.nbits);
 	work->data[20] = 0x80000000;
 	work->data[31] = 0x00000280;
-
+    diff_to_target(work->target, sctx->job.diff / 65536.0);
 	pthread_mutex_unlock(&sctx->work_lock);
 
 	if (opt_debug) {
@@ -646,25 +657,39 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		applog(LOG_DEBUG, "DEBUG: job_id='%s' extranonce2=%s ntime=%08x",
 		       work->job_id, xnonce2str, swab32(work->data[17]));
 		free(xnonce2str);
-	}
-    diff_to_target(work->target, sctx->job.diff / 65536.0);
+    }
+
+
 }
 
 bool fulltest_le(const uint *hash, const uint *target) {
     uint i;
-
-
+    bool rc;
     for(i = 7; i >= 0; --i) {
         if(hash[i] > target[i]) {
-            return false;
+            rc = false;
             break;
         }
         if(hash[i] < target[i]) {
-            return true;
+            rc = true;
             break;
         }
     }
-    return true;
+
+    if(opt_debug) {
+        uchar hash_str[65], target_str[65];
+
+        bin2hex(hash_str, (uint8_t *) hash, 32);
+        bin2hex(target_str, (uint8_t *) target, 32);
+
+        applog(LOG_DEBUG, "DEBUG (little endian): %s\nHash:   %sx0\nTarget: %sx0",
+          rc ? "hash <= target"
+             : "hash > target (false positive)",
+               hash_str, target_str);
+
+    }
+
+    return rc;
 }
 
 int scanhash_neoscrypt(int thr_id, uint *pdata, const uint *ptarget, uint max_nonce,
@@ -743,7 +768,7 @@ static void *miner_thread(void *userdata)
 
 	while (1) {
 		unsigned long hashes_done;
-		struct timeval tv_start, tv_end, diff;
+        struct timeval tv_start, tv_end, diff;
 		int64_t max64;
 		int rc;
 
@@ -751,7 +776,7 @@ static void *miner_thread(void *userdata)
 			while (time(NULL) >= g_work_time + 120)
 				sleep(1);
 			pthread_mutex_lock(&g_work_lock);
-			if (work.data[19] >= end_nonce && !memcmp(work.data, g_work.data, 76))
+            if(work.data[19] >= end_nonce && !memcmp(work.data, g_work.data, 76))
 				stratum_gen_work(&stratum, &g_work);
         }
 
@@ -791,7 +816,6 @@ static void *miner_thread(void *userdata)
 		gettimeofday(&tv_start, NULL);
 
 		/* scan nonces for a proof-of-work hash */
-
         rc = scanhash_neoscrypt(thr_id, work.data, work.target, max_nonce,
                   &hashes_done, 0x80000020 | (opt_nfactor << 8));
 
@@ -1188,12 +1212,18 @@ static void parse_arg(int key, char *arg, char *pname)
 		want_stratum = false;
 		have_stratum = false;
 		break;
+    case 1003:
+        break;
 	case 1007:
 		want_stratum = false;
 		break;
 	case 1009:
 		opt_redirect = false;
 		break;
+    case 1010:
+        break;
+    case 1011:
+        break;
 	case 1013:			/* --coinbase-addr */
 		pk_script_size = address_to_script(pk_script, sizeof(pk_script), arg);
 		if (!pk_script_size) {
@@ -1270,7 +1300,7 @@ static void parse_cmdline(int argc, char *argv[])
 			break;
 
 		parse_arg(key, optarg, argv[0]);
-	}
+    }
 	if (optind < argc) {
 		fprintf(stderr, "%s: unsupported non-option argument -- '%s'\n",
 			argv[0], argv[optind]);
@@ -1302,12 +1332,13 @@ int main(int argc, char *argv[])
 	struct thr_info *thr;
 	long flags;
 	int i;
-
+    stratum.next_diff=0;
+    stratum.job.diff=0;
 	rpc_user = strdup("");
 	rpc_pass = strdup("");
 
 	/* parse command line */
-	parse_cmdline(argc, argv);
+    parse_cmdline(argc, argv);
 
 	if (!opt_benchmark && !rpc_url) {
 		fprintf(stderr, "%s: no URL supplied\n", argv[0]);
@@ -1419,7 +1450,7 @@ int main(int argc, char *argv[])
 		if (have_stratum)
 			tq_push(thr_info[stratum_thr_id].q, strdup(rpc_url));
 	}
-
+    sleep(2);
 	/* start mining threads */
 	for (i = 0; i < opt_n_threads; i++) {
 		thr = &thr_info[i];
