@@ -386,8 +386,8 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		uint32_t ntime, nonce;
 		char ntimestr[9], noncestr[9], *xnonce2str;
 
-		le32enc(&ntime, work->data[17]);
-		le32enc(&nonce, work->data[19]);
+        le32enc(&ntime, htobe32(work->data[17]));
+        le32enc(&nonce, htobe32(work->data[19]));
 		bin2hex(ntimestr, (const unsigned char *)(&ntime), 4);
 		bin2hex(noncestr, (const unsigned char *)(&nonce), 4);
 		xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
@@ -614,6 +614,8 @@ err_out:
 static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 {
 	unsigned char merkle_root[64];
+    unsigned char test[160];
+
 	int i;
     if(sctx->job.diff == 0){
         applog(LOG_DEBUG, "Waiting for stratum to set diff");
@@ -629,26 +631,27 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	memcpy(work->xnonce2, sctx->job.xnonce2, sctx->xnonce2_size);
 
 	/* Generate merkle root */
-	sha256d(merkle_root, sctx->job.coinbase, sctx->job.coinbase_size);
+    sha256d(merkle_root, sctx->job.coinbase, sctx->job.coinbase_size);
 	for (i = 0; i < sctx->job.merkle_count; i++) {
-		memcpy(merkle_root + 32, sctx->job.merkle[i], 32);
-		sha256d(merkle_root, merkle_root, 64);
+        memcpy(merkle_root + 32, sctx->job.merkle[i], 32);
+        sha256d(merkle_root, merkle_root, 64);
 	}
-	
+
 	/* Increment extranonce2 */
 	for (i = 0; i < sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
 
 	/* Assemble block header */
 	memset(work->data, 0, 128);
-	work->data[0] = le32dec(sctx->job.version);
+    work->data[0] = be32dec(sctx->job.version);
 	for (i = 0; i < 8; i++)
-		work->data[1 + i] = le32dec((uint32_t *)sctx->job.prevhash + i);
+        work->data[1 + i] = be32dec((uint32_t *)sctx->job.prevhash + i);
 	for (i = 0; i < 8; i++)
-		work->data[9 + i] = be32dec((uint32_t *)merkle_root + i);
-	work->data[17] = le32dec(sctx->job.ntime);
-	work->data[18] = le32dec(sctx->job.nbits);
+        work->data[9 + i] = le32dec((uint32_t*)merkle_root+i);
+    work->data[17] = be32dec(sctx->job.ntime);
+    work->data[18] = be32dec(sctx->job.nbits);
 	work->data[20] = 0x80000000;
 	work->data[31] = 0x00000280;
+
     diff_to_target(work->target, sctx->job.diff / 65536.0);
 	pthread_mutex_unlock(&sctx->work_lock);
 
@@ -694,32 +697,17 @@ bool fulltest_le(const uint *hash, const uint *target) {
 
 int scanhash_neoscrypt(int thr_id, uint *pdata, const uint *ptarget, uint max_nonce,
     ulong *hashes_done, uint profile) {
-
+    uchar test[160];
     uint hash[8];
     const uint targint = ptarget[7];
     uint start_nonce = pdata[19];
-    uchar * pdata_c=(uchar *)pdata;
     uchar work[80];
     uint i=0,j;
 
-    /* Header conversion without nonce */
-    for(i=0;i<19;++i){
-        j= i*4;
-        work[j] = pdata_c[j+3];
-        work[j+1] = pdata_c[j+2];
-        work[j+2] = pdata_c[j+1];
-        work[j+3] = pdata_c[j];
-    }
-
-
     while(pdata[19] < max_nonce && !work_restart[thr_id].restart) {
-        /* convert nonce */
-        work[76] = pdata_c[79];
-        work[77] = pdata_c[78];
-        work[78] = pdata_c[77];
-        work[79] = pdata_c[76];
 
-        neoscrypt((uint8_t *) work, (uint8_t *) hash, profile);
+
+        neoscrypt((uint8_t *) pdata, (uint8_t *) hash, profile);
         /* Quick hash check */
         if(hash[7] <= targint) {
             /* Complete hash check */
