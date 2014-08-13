@@ -614,7 +614,6 @@ err_out:
 static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 {
 	unsigned char merkle_root[64];
-    unsigned char test[160];
 
 	int i;
     if(sctx->job.diff == 0){
@@ -697,7 +696,6 @@ bool fulltest_le(const uint *hash, const uint *target) {
 
 int scanhash_neoscrypt(int thr_id, uint *pdata, const uint *ptarget, uint max_nonce,
     ulong *hashes_done, uint profile) {
-    uchar test[160];
     uint hash[8];
     const uint targint = ptarget[7];
     uint start_nonce = pdata[19];
