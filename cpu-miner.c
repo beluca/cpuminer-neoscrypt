@@ -614,51 +614,52 @@ err_out:
 static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 {
 	unsigned char merkle_root[64];
-
 	int i;
-    if(sctx->job.diff == 0){
+
+    if(sctx->job.diff == 0){ //in case the stratum server is very slow to submit diff will prevent hashing with a diff of 0
         applog(LOG_DEBUG, "Waiting for stratum to set diff");
         sleep(1);
         stratum_gen_work(sctx,work);
-    }
-	pthread_mutex_lock(&sctx->work_lock);
+    }else{
+        pthread_mutex_lock(&sctx->work_lock);
 
-	free(work->job_id);
-	work->job_id = strdup(sctx->job.job_id);
-	work->xnonce2_len = sctx->xnonce2_size;
-	work->xnonce2 = realloc(work->xnonce2, sctx->xnonce2_size);
-	memcpy(work->xnonce2, sctx->job.xnonce2, sctx->xnonce2_size);
+        free(work->job_id);
+        work->job_id = strdup(sctx->job.job_id);
+        work->xnonce2_len = sctx->xnonce2_size;
+        work->xnonce2 = realloc(work->xnonce2, sctx->xnonce2_size);
+        memcpy(work->xnonce2, sctx->job.xnonce2, sctx->xnonce2_size);
 
-	/* Generate merkle root */
-    sha256d(merkle_root, sctx->job.coinbase, sctx->job.coinbase_size);
-	for (i = 0; i < sctx->job.merkle_count; i++) {
-        memcpy(merkle_root + 32, sctx->job.merkle[i], 32);
-        sha256d(merkle_root, merkle_root, 64);
-	}
+        /* Generate merkle root */
+        sha256d(merkle_root, sctx->job.coinbase, sctx->job.coinbase_size);
+        for (i = 0; i < sctx->job.merkle_count; i++) {
+            memcpy(merkle_root + 32, sctx->job.merkle[i], 32);
+            sha256d(merkle_root, merkle_root, 64);
+        }
 
-	/* Increment extranonce2 */
-	for (i = 0; i < sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
+        /* Increment extranonce2 */
+        for (i = 0; i < sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
 
-	/* Assemble block header */
-	memset(work->data, 0, 128);
-    work->data[0] = be32dec(sctx->job.version);
-	for (i = 0; i < 8; i++)
-        work->data[1 + i] = be32dec((uint32_t *)sctx->job.prevhash + i);
-	for (i = 0; i < 8; i++)
-        work->data[9 + i] = le32dec((uint32_t*)merkle_root+i);
-    work->data[17] = be32dec(sctx->job.ntime);
-    work->data[18] = be32dec(sctx->job.nbits);
-	work->data[20] = 0x80000000;
-	work->data[31] = 0x00000280;
+        /* Assemble block header */
+        memset(work->data, 0, 128);
+        work->data[0] = be32dec(sctx->job.version);
+        for (i = 0; i < 8; i++)
+            work->data[1 + i] = be32dec((uint32_t *)sctx->job.prevhash + i);
+        for (i = 0; i < 8; i++)
+            work->data[9 + i] = le32dec((uint32_t*)merkle_root+i);
+        work->data[17] = be32dec(sctx->job.ntime);
+        work->data[18] = be32dec(sctx->job.nbits);
+        work->data[20] = 0x80000000;
+        work->data[31] = 0x00000280;
 
-    diff_to_target(work->target, sctx->job.diff / 65536.0);
-	pthread_mutex_unlock(&sctx->work_lock);
+        diff_to_target(work->target, sctx->job.diff / 65536.0);
+        pthread_mutex_unlock(&sctx->work_lock);
 
-	if (opt_debug) {
-		char *xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
-		applog(LOG_DEBUG, "DEBUG: job_id='%s' extranonce2=%s ntime=%08x",
-		       work->job_id, xnonce2str, swab32(work->data[17]));
-		free(xnonce2str);
+        if (opt_debug) {
+            char *xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
+            applog(LOG_DEBUG, "DEBUG: job_id='%s' extranonce2=%s ntime=%08x",
+                   work->job_id, xnonce2str, swab32(work->data[17]));
+            free(xnonce2str);
+        }
     }
 
 
